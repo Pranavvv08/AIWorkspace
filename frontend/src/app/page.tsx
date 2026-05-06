@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Send, Database, CheckSquare, PlusCircle, MessageSquare, LogOut, CheckCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -26,6 +26,16 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
   const [isQuerying, setIsQuerying] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
@@ -53,6 +63,42 @@ export default function Home() {
       const res = await fetch('http://localhost:8000/tasks', { headers: { 'Authorization': `Bearer ${authToken}` } });
       if (res.ok) setTasks(await res.json());
     } catch (err) {}
+  };
+
+  const handleToggleTask = async (taskId: number, currentStatus: string) => {
+    if (!token) return;
+    const newStatus = currentStatus === 'Done' ? 'Pending' : 'Done';
+    try {
+      const res = await fetch(`http://localhost:8000/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+      }
+    } catch (err) {}
+  };
+
+  const handleSyncEmails = async () => {
+    if (!token) return;
+    setIsSyncing(true);
+    try {
+      const res = await fetch('http://localhost:8000/tasks/sync-email', {
+        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message);
+        fetchTasks(token);
+      } else {
+        alert("Failed to sync emails. Make sure your credentials are in the .env file.");
+      }
+    } catch (err) {
+      alert("Error syncing emails.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleIndexRepo = async (e: React.FormEvent) => {
@@ -220,10 +266,11 @@ export default function Home() {
             <div className="chat-container">
               {messages.map((msg) => (
                 <div key={msg.id} className={`message ${msg.role}`}>
-                  {msg.role === 'ai' ? <ReactMarkdown>{msg.content}</ReactMarkdown> : msg.content}
+                  {msg.role === 'ai' ? <ReactMarkdown components={{ input: ({node, checked, ...props}) => <input {...props} checked={!!checked} readOnly /> }}>{msg.content}</ReactMarkdown> : msg.content}
                 </div>
               ))}
               {isTyping && <div className="message ai typing-indicator"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>}
+              <div ref={messagesEndRef} />
             </div>
             <div className="input-area">
               <form className="input-box glass" onSubmit={handleSend}>
@@ -234,16 +281,21 @@ export default function Home() {
           </>
         ) : activeModule === 'tasks' ? (
           <div style={{ padding: '40px', overflowY: 'auto', flex: 1 }}>
-            <h2 style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <CheckSquare size={24} color="var(--primary)" /> Extracted Tasks
-            </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: 0 }}>
+                <CheckSquare size={24} color="var(--primary)" /> Extracted Tasks
+              </h2>
+              <button onClick={handleSyncEmails} disabled={isSyncing} style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--primary)', border: '1px solid var(--primary)', padding: '10px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {isSyncing ? 'Syncing Inbox...' : 'Sync Emails'}
+              </button>
+            </div>
             {tasks.length === 0 ? (
               <div style={{ color: '#888' }}>No tasks found. Try asking the agent to create a task in the Chat Workspace!</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {tasks.map(task => (
                   <div key={task.id} className="glass" style={{ padding: '20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer' }} onClick={() => handleToggleTask(task.id, task.status)}>
                       <CheckCircle size={20} color={task.status === 'Done' ? '#10b981' : '#888'} />
                       <span style={{ fontSize: '18px', textDecoration: task.status === 'Done' ? 'line-through' : 'none', color: task.status === 'Done' ? '#888' : 'var(--foreground)' }}>{task.title}</span>
                     </div>
@@ -282,7 +334,7 @@ export default function Home() {
               
               {repoAnswer && (
                 <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid var(--surface-border)' }}>
-                  <ReactMarkdown>{repoAnswer}</ReactMarkdown>
+                  <ReactMarkdown components={{ input: ({node, checked, ...props}) => <input {...props} checked={!!checked} readOnly /> }}>{repoAnswer}</ReactMarkdown>
                 </div>
               )}
             </div>
@@ -314,7 +366,7 @@ export default function Home() {
               
               {knowledgeAnswer && (
                 <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid var(--surface-border)' }}>
-                  <ReactMarkdown>{knowledgeAnswer}</ReactMarkdown>
+                  <ReactMarkdown components={{ input: ({node, checked, ...props}) => <input {...props} checked={!!checked} readOnly /> }}>{knowledgeAnswer}</ReactMarkdown>
                 </div>
               )}
             </div>
