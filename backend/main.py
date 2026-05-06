@@ -125,6 +125,33 @@ def get_tasks(db: Session = Depends(database.get_db), current_user: models.User 
     tasks = db.query(models.Task).filter(models.Task.user_id == current_user.id).order_by(models.Task.created_at.desc()).all()
     return tasks
 
+class TaskUpdateRequest(BaseModel):
+    status: str
+
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, req: TaskUpdateRequest, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    task = db.query(models.Task).filter(models.Task.id == task_id, models.Task.user_id == current_user.id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.status = req.status
+    db.commit()
+    return {"message": "Task updated"}
+
+import email_sync
+
+@app.post("/tasks/sync-email")
+async def sync_email_tasks(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    try:
+        extracted_tasks = await email_sync.fetch_and_process_emails()
+        for t in extracted_tasks:
+            new_task = models.Task(user_id=current_user.id, title=t.get("title", "Email Task"), priority=t.get("priority", "Medium"))
+            db.add(new_task)
+        if extracted_tasks:
+            db.commit()
+        return {"message": f"Successfully synced {len(extracted_tasks)} tasks from email."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 import rag
 
 class RepoIndexRequest(BaseModel):
