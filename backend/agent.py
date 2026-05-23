@@ -5,7 +5,6 @@ import json
 
 load_dotenv()
 
-# We use the mini model as requested by the user for cost efficiency
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def process_chat_message(message: str, history: list) -> dict:
