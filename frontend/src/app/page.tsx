@@ -266,7 +266,7 @@ export default function Home() {
             <div className="chat-container">
               {messages.map((msg) => (
                 <div key={msg.id} className={`message ${msg.role}`}>
-                  {msg.role === 'ai' ? <ReactMarkdown components={{ input: ({node, checked, ...props}) => <input {...props} checked={!!checked} readOnly /> }}>{msg.content}</ReactMarkdown> : msg.content}
+                  {msg.role === 'ai' ? <ReactMarkdown components={{ input: ({node, checked, value, ...props}) => <input {...props} value={value !== undefined ? value : ''} checked={!!checked} readOnly /> }}>{msg.content}</ReactMarkdown> : msg.content}
                 </div>
               ))}
               {isTyping && <div className="message ai typing-indicator"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>}
@@ -334,7 +334,7 @@ export default function Home() {
               
               {repoAnswer && (
                 <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid var(--surface-border)' }}>
-                  <ReactMarkdown components={{ input: ({node, checked, ...props}) => <input {...props} checked={!!checked} readOnly /> }}>{repoAnswer}</ReactMarkdown>
+                  <ReactMarkdown components={{ input: ({node, checked, value, ...props}) => <input {...props} value={value !== undefined ? value : ''} checked={!!checked} readOnly /> }}>{repoAnswer}</ReactMarkdown>
                 </div>
               )}
             </div>
@@ -366,7 +366,7 @@ export default function Home() {
               
               {knowledgeAnswer && (
                 <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid var(--surface-border)' }}>
-                  <ReactMarkdown components={{ input: ({node, checked, ...props}) => <input {...props} checked={!!checked} readOnly /> }}>{knowledgeAnswer}</ReactMarkdown>
+                  <ReactMarkdown components={{ input: ({node, checked, value, ...props}) => <input {...props} value={value !== undefined ? value : ''} checked={!!checked} readOnly /> }}>{knowledgeAnswer}</ReactMarkdown>
                 </div>
               )}
             </div>
