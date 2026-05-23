@@ -4,6 +4,7 @@ import chromadb
 from PyPDF2 import PdfReader
 from openai import AsyncOpenAI
 import traceback
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -17,32 +18,44 @@ async def process_document(file_content: bytes, filename: str) -> int:
     _knowledge_cache.clear() # Clear cache when new docs are uploaded
     
     try:
-        text = ""
-        if filename.lower().endswith('.pdf'):
-            pdf = PdfReader(io.BytesIO(file_content))
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-        else:
-            # Assume plain text / markdown
-            text = file_content.decode('utf-8')
-            
-        if not text.strip():
-            return 0
-            
-        # Chunk text (~1500 chars per chunk)
-        chunk_size = 1500
-        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-        
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
         docs = []
         metadatas = []
         ids = []
+        global_idx = 0
         
-        for idx, chunk in enumerate(chunks):
-            docs.append(f"Source: {filename}\n\n{chunk}")
-            metadatas.append({"source": filename})
-            ids.append(f"{filename}_{idx}")
+        if filename.lower().endswith('.pdf'):
+            pdf = PdfReader(io.BytesIO(file_content))
+            for page_num, page in enumerate(pdf.pages, start=1):
+                page_text = page.extract_text()
+                if page_text and page_text.strip():
+                    chunks = splitter.split_text(page_text)
+                    for chunk in chunks:
+                        docs.append(f"Source: {filename} (Page {page_num})\n\n{chunk}")
+                        metadatas.append({
+                            "source": filename,
+                            "page": page_num,
+                            "chunk_index": global_idx
+                        })
+                        ids.append(f"{filename}_{global_idx}")
+                        global_idx += 1
+        else:
+            # Assume plain text / markdown
+            text = file_content.decode('utf-8')
+            if text.strip():
+                chunks = splitter.split_text(text)
+                for chunk in chunks:
+                    docs.append(f"Source: {filename}\n\n{chunk}")
+                    metadatas.append({
+                        "source": filename,
+                        "page": 1,
+                        "chunk_index": global_idx
+                    })
+                    ids.append(f"{filename}_{global_idx}")
+                    global_idx += 1
+            
+        if not docs:
+            return 0
             
         # Generate embeddings
         response = await client.embeddings.create(

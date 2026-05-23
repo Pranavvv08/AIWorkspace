@@ -5,6 +5,7 @@ import chromadb
 from git import Repo
 from openai import AsyncOpenAI
 import traceback
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -44,15 +45,14 @@ async def index_repository(repo_url: str) -> int:
         metadatas = []
         ids = []
         
+        splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=400)
+        
         for idx, file_path in enumerate(files):
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 
-                # Extremely simple chunking: just use the whole file if small, or split by lines
-                # To keep costs low and simple, we'll just chunk whole files up to 4000 characters
-                chunk_size = 4000
-                chunks = [content[i:i+chunk_size] for i in range(0, len(content), chunk_size)]
+                chunks = splitter.split_text(content)
                 
                 rel_path = os.path.relpath(file_path, temp_dir)
                 for c_idx, chunk in enumerate(chunks):
@@ -108,7 +108,7 @@ async def query_repository(query: str) -> str:
         # Query ChromaDB
         results = collection.query(
             query_embeddings=[query_embedding],
-            n_results=5
+            n_results=15
         )
         
         if not results['documents'] or not results['documents'][0]:
@@ -117,8 +117,9 @@ async def query_repository(query: str) -> str:
         context = "\n\n---\n\n".join(results['documents'][0])
         
         prompt = f"""
-        You are a Repository Intelligence Agent. Answer the user's question based ONLY on the provided code snippets.
-        If the answer is not in the snippets, say "I don't have enough context in the indexed repository to answer this."
+        You are a Repository Intelligence Agent. Answer the user's question based on the provided code snippets. 
+        You are allowed to infer general project details (like what the project is about) from the filenames, imports, and code structure provided.
+        If the snippets are completely irrelevant and you cannot deduce an answer, say "I don't have enough context in the indexed repository to answer this."
         
         Code Context:
         {context}
